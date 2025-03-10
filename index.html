@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Прыгающий шар</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            touch-action: none;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        // Инициализация игры
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Установка размеров canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Параметры игры
+        const gameOptions = {
+            ballRadius: 25,
+            ballColor: 'green',
+            groundY: canvas.height * 0.75,
+            obstacleWidth: 40,
+            obstacleHeight: 60,
+            obstacleColor: 'red',
+            obstacleSpeed: 5,
+            obstacleDistanceRange: [300, 500],
+            gravity: 0.6,
+            jumpForce: -15,
+        };
+        
+        // Объект игрока (шар)
+        const player = {
+            x: canvas.width * 0.2,
+            y: gameOptions.groundY - gameOptions.ballRadius,
+            radius: gameOptions.ballRadius,
+            color: gameOptions.ballColor,
+            velocityY: 0,
+            isJumping: false,
+            
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            },
+            
+            jump() {
+                if (!this.isJumping) {
+                    this.velocityY = gameOptions.jumpForce;
+                    this.isJumping = true;
+                }
+            },
+            
+            update() {
+                this.velocityY += gameOptions.gravity;
+                this.y += this.velocityY;
+                
+                // Проверка столкновения с землей
+                if (this.y + this.radius > gameOptions.groundY) {
+                    this.y = gameOptions.groundY - this.radius;
+                    this.velocityY = 0;
+                    this.isJumping = false;
+                }
+            }
+        };
+        
+        // Массив препятствий
+        let obstacles = [];
+        let score = 0;
+        let gameOver = false;
+        
+        // Создание препятствия
+        function createObstacle() {
+            const obstacle = {
+                x: canvas.width + gameOptions.obstacleWidth,
+                y: gameOptions.groundY - gameOptions.obstacleHeight,
+                width: gameOptions.obstacleWidth,
+                height: gameOptions.obstacleHeight,
+                color: gameOptions.obstacleColor,
+                counted: false,
+                
+                draw() {
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                },
+                
+                update() {
+                    this.x -= gameOptions.obstacleSpeed;
+                    
+                    // Подсчет очков
+                    if (!this.counted && this.x + this.width < player.x) {
+                        score++;
+                        this.counted = true;
+                    }
+                    
+                    // Проверка столкновения с игроком
+                    if (this.checkCollision()) {
+                        gameOver = true;
+                    }
+                },
+                
+                checkCollision() {
+                    // Упрощенная проверка столкновения круга с прямоугольником
+                    const distX = Math.abs(player.x - (this.x + this.width / 2));
+                    const distY = Math.abs(player.y - (this.y + this.height / 2));
+                    
+                    if (distX > (this.width / 2 + player.radius)) return false;
+                    if (distY > (this.height / 2 + player.radius)) return false;
+                    
+                    if (distX <= (this.width / 2)) return true;
+                    if (distY <= (this.height / 2)) return true;
+                    
+                    const dx = distX - this.width / 2;
+                    const dy = distY - this.height / 2;
+                    return (dx * dx + dy * dy <= (player.radius * player.radius));
+                }
+            };
+            
+            obstacles.push(obstacle);
+        }
+        
+        // Обработка тапа/клика
+        canvas.addEventListener('touchstart', handleTap);
+        canvas.addEventListener('mousedown', handleTap);
+        
+        function handleTap(e) {
+            e.preventDefault();
+            if (gameOver) {
+                resetGame();
+            } else {
+                player.jump();
+            }
+        }
+        
+        // Сброс игры
+        function resetGame() {
+            obstacles = [];
+            score = 0;
+            gameOver = false;
+            player.y = gameOptions.groundY - player.radius;
+            player.velocityY = 0;
+            player.isJumping = false;
+            gameOptions.obstacleSpeed = 5;
+        }
+        
+        // Управление созданием препятствий
+        let obstacleTimer = 0;
+        let nextObstacleTime = getRandomTime();
+        
+        function getRandomTime() {
+            return Math.floor(Math.random() * (gameOptions.obstacleDistanceRange[1] - gameOptions.obstacleDistanceRange[0]) + gameOptions.obstacleDistanceRange[0]) / gameOptions.obstacleSpeed;
+        }
+        
+        // Основной игровой цикл
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Отрисовка земли
+            ctx.fillStyle = '#333';
+            ctx.fillRect(0, gameOptions.groundY, canvas.width, canvas.height - gameOptions.groundY);
+            
+            // Обновление и отрисовка игрока
+            player.update();
+            player.draw();
+            
+            if (!gameOver) {
+                // Управление препятствиями
+                obstacleTimer++;
+                if (obstacleTimer >= nextObstacleTime) {
+                    createObstacle();
+                    obstacleTimer = 0;
+                    nextObstacleTime = getRandomTime();
+                }
+                
+                // Увеличение сложности с ростом счета
+                if (score > 0 && score % 5 === 0) {
+                    gameOptions.obstacleSpeed = 5 + Math.floor(score / 5);
+                }
+            }
+            
+            // Обновление и отрисовка препятствий
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].update();
+                obstacles[i].draw();
+                
+                // Удаление препятствий, вышедших за пределы экрана
+                if (obstacles[i].x + obstacles[i].width < 0) {
+                    obstacles.splice(i, 1);
+                }
+            }
+            
+            // Отображение счета
+            ctx.fillStyle = '#000';
+            ctx.font = '24px Arial';
+            ctx.fillText(`Счет: ${score}`, 20, 40);
+            
+            // Отображение сообщения о конце игры
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = '#fff';
+                ctx.font = '36px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Игра окончена!', canvas.width / 2, canvas.height / 2 - 40);
+                ctx.fillText(`Ваш счет: ${score}`, canvas.width / 2, canvas.height / 2);
+                ctx.font = '24px Arial';
+                ctx.fillText('Нажмите, чтобы начать заново', canvas.width / 2, canvas.height / 2 + 40);
+                ctx.textAlign = 'left';
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Запуск игры
+        gameLoop();
+    </script>
+</body>
+</html>
